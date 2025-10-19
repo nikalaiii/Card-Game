@@ -62,7 +62,14 @@ export class GameUtils {
   }
 
   static checkGameEnd(players: { cards: Card[]; status: PlayerStatus; name: string }[]): string | null {
-    const activePlayers = players.filter(p => p.status !== 'eliminated');
+    // Check if any player has no cards left (winner)
+    const winner = players.find(p => p.cards.length === 0);
+    if (winner) {
+      return winner.name;
+    }
+    
+    // Check if only one player has cards left (all others eliminated)
+    const activePlayers = players.filter(p => p.cards.length > 0);
     
     if (activePlayers.length === 1) {
       return activePlayers[0].name; // Winner is the last player with cards
@@ -129,6 +136,18 @@ export class GameUtils {
         if (!playerCards.some(card => card.shortName === defendingCard.shortName)) {
           return { valid: false, message: 'Player does not have this card' };
         }
+        
+        // Check if the attacking card is already defended
+        const cardPair = activeCards.find(pair => 
+          pair.attackingCard.shortName === attackingCard.shortName
+        );
+        if (!cardPair) {
+          return { valid: false, message: 'Attacking card not found on table' };
+        }
+        if (cardPair.defendingCard) {
+          return { valid: false, message: 'This attacking card is already defended' };
+        }
+        
         if (!CardUtils.canDefend(attackingCard, defendingCard, trumpSuit as any)) {
           return { valid: false, message: 'Cannot defend with this card' };
         }

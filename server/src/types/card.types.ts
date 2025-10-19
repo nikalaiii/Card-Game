@@ -14,7 +14,7 @@ export interface CardOnTable {
 }
 
 export type GameStatus = 'waiting' | 'playing' | 'finished';
-export type PlayerStatus = 'waiting' | 'attacker' | 'defender' | 'spectator' | 'eliminated';
+export type PlayerStatus = 'waiting' | 'active' | 'attacker' | 'defender' | 'spectator' | 'eliminated';
 export type PlayerRole = 'owner' | 'player';
 
 export interface PlayerInRoom {

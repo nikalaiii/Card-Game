@@ -18,7 +18,7 @@ export class RoomService {
     private playerModel: typeof Player,
   ) {}
 
-  async createRoom(createRoomRequest: CreateRoomRequest): Promise<Room> {
+  async createRoom(createRoomRequest: CreateRoomRequest): Promise<Room | null> {
     const { name, playerLimit, playerNames, owner } = createRoomRequest;
 
     // Validate player limit
@@ -44,15 +44,22 @@ export class RoomService {
 
     // Create players for the room
     for (const playerName of playerNames) {
-      await this.playerModel.create({
-        name: playerName,
-        roomId: room.id,
-        role: playerName === owner ? 'owner' : 'player',
-        cards: [],
-        status: 'waiting',
-      } as any);
+      const exists = await this.playerModel.findOne({
+        where: { roomId: room.id, name: playerName },
+      });
+      if (!exists) {
+        await this.playerModel.create({
+          name: playerName,
+          roomId: room.id,
+          role: playerName === owner ? 'owner' : 'player',
+          cards: [],
+          status: 'waiting',
+        } as any);
+      }
     }
 
+    // Return the room with players
+    await room.reload({ include: [{ model: Player, as: 'players' }] });
     return room;
   }
 
@@ -80,7 +87,8 @@ export class RoomService {
       });
 
       if (existingPlayer) {
-        return { success: false, message: 'Player already in room' };
+        // Allow rejoin - return success: true so socket can join the room
+        return { success: true, message: 'Rejoined room', room };
       }
 
       // Add player to room
@@ -144,7 +152,11 @@ export class RoomService {
     await room.destroy();
   }
 
-  async startGame(roomId: string, ownerId: string): Promise<Room> {
+  async startGame(roomId: string, ownerId: string): Promise<Room | null> {
+    console.log(
+      `[ROOM-SERVICE] Starting game for room ${roomId} by owner ${ownerId}`,
+    );
+
     const room = await this.roomModel.findByPk(roomId, {
       include: [Player],
     });
@@ -153,8 +165,21 @@ export class RoomService {
       throw new NotFoundException('Room not found');
     }
 
+    console.log(
+      `[ROOM-SERVICE] Room before start: ${JSON.stringify({
+        id: room.id,
+        currentGameStatus: room.currentGameStatus,
+        players: room.players.map((p) => ({
+          id: p.id,
+          name: p.name,
+          role: p.role,
+          status: p.status,
+        })),
+      })}`,
+    );
+
     // Check if the requester is the owner
-    const owner = room.players.find(p => p.id === ownerId);
+    const owner = room.players.find((p) => p.id === ownerId);
     if (!owner || owner.role !== 'owner') {
       throw new BadRequestException('Only room owner can start the game');
     }
@@ -169,6 +194,14 @@ export class RoomService {
       );
     }
 
+    // Check if all players are active (connected)
+    const activePlayers = room.players.filter((p) => p.status === 'active');
+    if (activePlayers.length !== room.players.length) {
+      throw new BadRequestException(
+        'All players must be connected (active) to start the game',
+      );
+    }
+
     // Deal cards to players
     const deck = CardUtils.createDeck();
     const trumpSuit = deck[deck.length - 1].suit;
@@ -176,8 +209,8 @@ export class RoomService {
 
     console.log('Dealing cards:', {
       playersCount: room.players.length,
-      handsPerPlayer: hands.map(hand => hand.length),
-      trumpSuit
+      handsPerPlayer: hands.map((hand) => hand.length),
+      trumpSuit,
     });
 
     // Update players with their cards
@@ -186,10 +219,17 @@ export class RoomService {
         cards: hands[i],
         status: i === 0 ? 'attacker' : 'waiting',
       });
-      console.log(`Player ${i} (${room.players[i].name}) got cards:`, hands[i].map(card => card.shortName));
+      console.log(
+        `Player ${i} (${room.players[i].name}) got cards:`,
+        hands[i].map((card) => card.shortName),
+      );
     }
 
     // Update room
+    console.log(
+      `[ROOM-SERVICE] Setting game state: attacker=${room.players[0].id}, defender=${room.players[1]?.id}`,
+    );
+
     await room.update({
       currentGameStatus: 'playing',
       currentAttacker: room.players[0].id,
@@ -198,31 +238,86 @@ export class RoomService {
       trumpSuit,
     });
 
+    // Update player statuses
+    await room.players[0].update({ status: 'attacker' });
+    if (room.players[1]) {
+      await room.players[1].update({ status: 'defender' });
+    }
+
     // Refresh room with updated players data
     const updatedRoom = await this.roomModel.findByPk(roomId, {
       include: [
         {
           model: Player,
-          as: 'players'
-        }
+          as: 'players',
+        },
       ],
     });
 
-    // Debug: Check if players and cards are loaded
-    console.log('Updated room players:', updatedRoom?.players?.map(p => ({
-      id: p.id,
-      name: p.name,
-      cardsCount: p.cards?.length || 0,
-      cards: p.cards
-    })));
+    console.log(
+      `[ROOM-SERVICE] Room after start: ${JSON.stringify({
+        id: updatedRoom?.id,
+        currentGameStatus: updatedRoom?.currentGameStatus,
+        currentAttacker: updatedRoom?.currentAttacker,
+        currentDefender: updatedRoom?.currentDefender,
+        trumpSuit: updatedRoom?.trumpSuit,
+        players:
+          updatedRoom?.players?.map((p) => ({
+            id: p.id,
+            name: p.name,
+            status: p.status,
+            cardsCount: p.cards?.length || 0,
+          })) || [],
+      })}`,
+    );
 
     return updatedRoom;
+  }
+
+  async updatePlayerSocketId(
+    roomId: string,
+    playerName: string,
+    socketId: string,
+  ): Promise<void> {
+    const player = await this.playerModel.findOne({
+      where: { roomId, name: playerName },
+    });
+
+    if (player) {
+      await player.update({ socketId });
+      console.log(
+        `Updated socketId for player ${playerName} in room ${roomId}: ${socketId}`,
+      );
+    }
+  }
+
+  async updatePlayerStatus(
+    roomId: string,
+    playerName: string,
+    status:
+      | 'waiting'
+      | 'active'
+      | 'attacker'
+      | 'defender'
+      | 'spectator'
+      | 'eliminated',
+  ): Promise<void> {
+    const player = await this.playerModel.findOne({
+      where: { roomId, name: playerName },
+    });
+
+    if (player) {
+      await player.update({ status });
+      console.log(
+        `Updated status for player ${playerName} in room ${roomId}: ${status}`,
+      );
+    }
   }
 
   // Debug method to check database structure
   async debugDatabaseStructure(roomId: string) {
     console.log('=== DATABASE DEBUG ===');
-    
+
     // Check if room exists
     const room = await this.roomModel.findByPk(roomId);
     console.log('Room exists:', !!room);
@@ -231,22 +326,25 @@ export class RoomService {
         id: room.id,
         name: room.name,
         currentGameStatus: room.currentGameStatus,
-        trumpSuit: room.trumpSuit
+        trumpSuit: room.trumpSuit,
       });
     }
 
     // Check players directly
     const players = await this.playerModel.findAll({
-      where: { roomId: roomId }
+      where: { roomId: roomId },
     });
     console.log('Players found:', players.length);
     players.forEach((player, index) => {
       console.log(`Player ${index}:`, {
         id: player.id,
         name: player.name,
+        socketId: player.socketId,
         cardsType: typeof player.cards,
-        cardsLength: Array.isArray(player.cards) ? player.cards.length : 'not array',
-        cards: player.cards
+        cardsLength: Array.isArray(player.cards)
+          ? player.cards.length
+          : 'not array',
+        cards: player.cards,
       });
     });
 
@@ -255,13 +353,13 @@ export class RoomService {
       include: [
         {
           model: Player,
-          as: 'players'
-        }
+          as: 'players',
+        },
       ],
     });
     console.log('Room with players relationship:', {
       hasPlayers: !!roomWithPlayers?.players,
-      playersCount: roomWithPlayers?.players?.length || 0
+      playersCount: roomWithPlayers?.players?.length || 0,
     });
 
     console.log('=== END DEBUG ===');

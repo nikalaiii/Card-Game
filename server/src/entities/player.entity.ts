@@ -1,4 +1,13 @@
-import { Table, Column, Model, DataType, BelongsTo, ForeignKey, CreatedAt, UpdatedAt } from 'sequelize-typescript';
+import {
+  Table,
+  Column,
+  Model,
+  DataType,
+  BelongsTo,
+  ForeignKey,
+  CreatedAt,
+  UpdatedAt,
+} from 'sequelize-typescript';
 import { Room } from './room.entity';
 
 @Table({
@@ -20,11 +29,24 @@ export class Player extends Model<Player> {
   declare name: string;
 
   @Column({
-    type: DataType.ENUM('waiting', 'attacker', 'defender', 'spectator', 'eliminated'),
+    type: DataType.ENUM(
+      'waiting',
+      'active',
+      'attacker',
+      'defender',
+      'spectator',
+      'eliminated',
+    ),
     allowNull: false,
     defaultValue: 'waiting',
   })
-  declare status: 'waiting' | 'attacker' | 'defender' | 'spectator' | 'eliminated';
+  declare status:
+    | 'waiting'
+    | 'active'
+    | 'attacker'
+    | 'defender'
+    | 'spectator'
+    | 'eliminated';
 
   @Column({
     type: DataType.ENUM('owner', 'player'),

@@ -63,14 +63,13 @@ socket.on('room-joined', (data) => {
 
 ### Step 3: Create Another User and Join Room (Player 2 - Bob)
 
-**HTTP Request:**
-```http
-POST http://localhost:3000/rooms/join
-Content-Type: application/json
+**Socket message from owner**
+```socket
+  http://localhost:3000
 
 {
   "roomId": "room-uuid-123",
-  "playerName": "Bob"
+  "playerId": "uuid"
 }
 ```
 

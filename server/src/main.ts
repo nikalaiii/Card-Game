@@ -26,7 +26,7 @@ async function bootstrap() {
       credentials: true,
     });
 
-    await app.listen(process.env.PORT ?? 3000);
+    await app.listen(process.env.PORT ?? 3001);
     console.log(`🎮 Card Game Server is running on: ${await app.getUrl()}`);
     console.log(`📡 WebSocket available at: ${await app.getUrl()}`);
     console.log(`🗄️  Database: PostgreSQL on localhost:5432`);
