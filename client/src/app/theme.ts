@@ -1,14 +1,27 @@
 'use client';
 
 import { createTheme } from '@mui/material/styles';
+import { Playfair_Display_SC, Kalnia_Glaze } from 'next/font/google';
+
+const playfair = Playfair_Display_SC({
+  weight: ['400', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+});
+
+const kalnia = Kalnia_Glaze({
+  weight: ['400', '700'],
+  subsets: ['latin'],
+  display: 'swap',
+});
 
 export const theme = createTheme({
   palette: {
     mode: 'light',
     primary: {
-      main: '#1976d2',
-      light: '#42a5f5',
-      dark: '#1565c0',
+      main: '#d32f2f',
+      light: '#ff6868ff',
+      dark: '#6d0505ff',
     },
     secondary: {
       main: '#dc004e',
@@ -16,12 +29,16 @@ export const theme = createTheme({
       dark: '#9a0036',
     },
     background: {
-      default: '#f5f5f5',
-      paper: '#ffffff',
+      default: '#636363ff',
+      paper: '#4f4a4aff',
     },
+    text: {
+      primary: '#fff',
+      secondary: '#fff',
+    }
   },
   typography: {
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: `${playfair.style.fontFamily}, sans-serif`,
     h1: {
       fontSize: '2.5rem',
       fontWeight: 600,

@@ -18,10 +18,14 @@ body {
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: url('/media/10081449.jpg') center/cover no-repeat;
+  background-attachment: fixed;
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+  overflow-x: hidden; /* keep horizontal lock, allow vertical scroll */
+  position: relative;
 }
 
 * {

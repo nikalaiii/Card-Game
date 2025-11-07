@@ -158,10 +158,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem(storageKey, payload); // fallback for refresh
         }
         
-        // Join via WebSocket
+        // Join via WebSocket with character data
         socketService.joinRoom({
           roomId: response.room.id,
           playerName: data.owner,
+          character: data.character,
         });
 
         return response.room;
@@ -197,10 +198,11 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem(storageKey, payload); // fallback for refresh
         }
         
-        // Join via WebSocket
+        // Join via WebSocket with character data
         socketService.joinRoom({
           roomId: data.roomId,
           playerName: data.playerName,
+          character: data.character,
         });
 
         return response.room;

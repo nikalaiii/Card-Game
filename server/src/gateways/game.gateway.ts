@@ -218,7 +218,7 @@ export class GameGateway
         `[JOIN-ROOM] Player ${playerName} attempting to join room ${roomId}`,
       );
 
-      const result = await this.roomService.joinRoom({ roomId, playerName });
+      const result = await this.roomService.joinRoom(data);
       this.logger.log(`[JOIN-ROOM] Join result: ${JSON.stringify(result)}`);
 
       if (result.success) {
@@ -287,15 +287,31 @@ export class GameGateway
         // Only notify other players for new joins, not rejoins
         const isRejoin = result.message === 'Rejoined room';
         if (!isRejoin) {
+          // Emit full player entity from database where possible
+          const dbRoom = await this.roomService.getRoom(roomId);
+          const dbPlayer = dbRoom.players.find((p) => p.name === playerName);
           client.to(roomId).emit('player-joined', {
-            player: {
-              id: client.id,
-              name: playerName,
-              status: 'active',
-              role: 'player',
-              cards: [],
-              socketId: client.id,
-            },
+            player: dbPlayer
+              ? {
+                  id: dbPlayer.id,
+                  name: dbPlayer.name,
+                  status: dbPlayer.status as any,
+                  role: dbPlayer.role as any,
+                  cards: [],
+                  socketId: dbPlayer.socketId,
+                  characterType: (dbPlayer as any).characterType,
+                  avatar: (dbPlayer as any).avatar,
+                  characterTeam: (dbPlayer as any).characterTeam,
+                  avatarNumber: (dbPlayer as any).avatarNumber,
+                }
+              : {
+                  id: client.id,
+                  name: playerName,
+                  status: 'active',
+                  role: 'player',
+                  cards: [],
+                  socketId: client.id,
+                },
           });
         }
 

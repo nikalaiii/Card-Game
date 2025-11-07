@@ -4,6 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/sequelize';
+import { Op } from 'sequelize';
 import { Room } from '../entities/room.entity';
 import { Player } from '../entities/player.entity';
 import { CreateRoomRequest, JoinRoomRequest } from '../types/game.types';
@@ -19,7 +20,7 @@ export class RoomService {
   ) {}
 
   async createRoom(createRoomRequest: CreateRoomRequest): Promise<Room | null> {
-    const { name, playerLimit, playerNames, owner } = createRoomRequest;
+    const { name, playerLimit, playerNames, owner, character } = createRoomRequest;
 
     // Validate player limit
     if (playerLimit < 2 || playerLimit > 6) {
@@ -42,19 +43,53 @@ export class RoomService {
       currentGameStatus: 'waiting',
     } as any);
 
-    // Create players for the room
+    // Create players for the room using existing character data
     for (const playerName of playerNames) {
       const exists = await this.playerModel.findOne({
         where: { roomId: room.id, name: playerName },
       });
       if (!exists) {
-        await this.playerModel.create({
-          name: playerName,
-          roomId: room.id,
-          role: playerName === owner ? 'owner' : 'player',
-          cards: [],
-          status: 'waiting',
-        } as any);
+        // First, try to find existing character data
+        const existingCharacter = await this.playerModel.findOne({
+          where: { name: playerName, roomId: { [Op.is]: null } }, // Global character (not in any room)
+        });
+
+        if (existingCharacter) {
+          // Use existing character data
+          await this.playerModel.create({
+            name: playerName,
+            roomId: room.id,
+            role: playerName === owner ? 'owner' : 'player',
+            cards: [],
+            status: 'waiting',
+            characterType: existingCharacter.characterType,
+            avatar: existingCharacter.avatar,
+            characterTeam: existingCharacter.characterTeam,
+            avatarNumber: existingCharacter.avatarNumber,
+          } as any);
+        } else if (playerName === owner && character) {
+          // Use character data from request for owner
+          await this.playerModel.create({
+            name: playerName,
+            roomId: room.id,
+            role: 'owner',
+            cards: [],
+            status: 'waiting',
+            characterType: character.characterType,
+            avatar: character.avatar,
+            characterTeam: character.characterTeam,
+            avatarNumber: character.avatarNumber,
+          } as any);
+        } else {
+          // Create new player without character data
+          await this.playerModel.create({
+            name: playerName,
+            roomId: room.id,
+            role: playerName === owner ? 'owner' : 'player',
+            cards: [],
+            status: 'waiting',
+          } as any);
+        }
       }
     }
 
@@ -66,7 +101,7 @@ export class RoomService {
   async joinRoom(
     joinRoomRequest: JoinRoomRequest,
   ): Promise<{ success: boolean; message: string; room?: Room }> {
-    const { roomId, playerName } = joinRoomRequest;
+    const { roomId, playerName, character } = joinRoomRequest;
 
     const room = await this.roomModel.findByPk(roomId, {
       include: [Player],
@@ -91,14 +126,38 @@ export class RoomService {
         return { success: true, message: 'Rejoined room', room };
       }
 
-      // Add player to room
-      await this.playerModel.create({
-        name: playerName,
-        roomId: room.id,
-        role: 'player',
-        cards: [],
-        status: 'waiting',
-      } as any);
+      // First, try to find existing character data
+      const existingCharacter = await this.playerModel.findOne({
+        where: { name: playerName, roomId: { [Op.is]: null } }, // Global character (not in any room)
+      });
+
+      if (existingCharacter) {
+        // Use existing character data
+        await this.playerModel.create({
+          name: playerName,
+          roomId: room.id,
+          role: 'player',
+          cards: [],
+          status: 'waiting',
+          characterType: existingCharacter.characterType,
+          avatar: existingCharacter.avatar,
+          characterTeam: existingCharacter.characterTeam,
+          avatarNumber: existingCharacter.avatarNumber,
+        } as any);
+      } else {
+        // Add player to room with optional character info from request
+        await this.playerModel.create({
+          name: playerName,
+          roomId: room.id,
+          role: 'player',
+          cards: [],
+          status: 'waiting',
+          characterType: character?.characterType,
+          avatar: character?.avatar,
+          characterTeam: character?.characterTeam,
+          avatarNumber: character?.avatarNumber,
+        } as any);
+      }
 
       return { success: true, message: 'Successfully joined room', room };
     } else {

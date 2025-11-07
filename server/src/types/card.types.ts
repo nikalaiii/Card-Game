@@ -24,6 +24,12 @@ export interface PlayerInRoom {
   role: PlayerRole;
   cards: Card[];
   socketId?: string;
+  characterType?: string;
+  avatar?: string;
+  characterTeam?: string;
+  avatarNumber?: number;
+  visibleCards?: Card[];
+  abilityUsed?: boolean;
 }
 
 export interface Room {

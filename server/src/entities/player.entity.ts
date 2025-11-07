@@ -68,14 +68,55 @@ export class Player extends Model<Player> {
   })
   declare socketId: string;
 
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  declare characterType: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  declare avatar: string;
+
+  @Column({
+    type: DataType.STRING,
+    allowNull: true,
+  })
+  declare characterTeam: string;
+
+  @Column({
+    type: DataType.INTEGER,
+    allowNull: true,
+  })
+  declare avatarNumber: number;
+
+  @Column({
+    type: DataType.JSON,
+    allowNull: true,
+    defaultValue: [],
+  })
+  declare visibleCards: any[];
+
+  @Column({
+    type: DataType.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  })
+  declare abilityUsed: boolean;
+
   @ForeignKey(() => Room)
   @Column({
     type: DataType.UUID,
-    allowNull: false,
+    allowNull: true,
   })
-  declare roomId: string;
+  declare roomId: string | null;
 
-  @BelongsTo(() => Room)
+  @BelongsTo(() => Room, {
+    foreignKey: 'roomId',
+    constraints: false, // Allow null foreign key
+  })
   room: Room;
 
   @CreatedAt

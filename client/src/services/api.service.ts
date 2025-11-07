@@ -6,6 +6,7 @@ import {
   ApiResponse,
   Room,
   GameState,
+  PlayerCharacter,
 } from '../types/game.types';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -84,6 +85,37 @@ export class ApiService {
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.message || 'Failed to get game state');
+    }
+  }
+
+  // Character endpoints
+  static async createCharacter(character: PlayerCharacter): Promise<ApiResponse<PlayerCharacter>> {
+    try {
+      const response = await apiClient.post('/characters', character);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'Failed to create character');
+    }
+  }
+
+  static async getCharacter(username: string): Promise<ApiResponse<PlayerCharacter>> {
+    try {
+      const response = await apiClient.get(`/characters/${username}`);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'Failed to get character');
+    }
+  }
+
+  static async updateCharacter(
+    username: string,
+    character: Partial<PlayerCharacter>
+  ): Promise<ApiResponse<PlayerCharacter>> {
+    try {
+      const response = await apiClient.post(`/characters/${username}/update`, character);
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || 'Failed to update character');
     }
   }
 }

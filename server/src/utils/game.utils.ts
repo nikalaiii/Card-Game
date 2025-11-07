@@ -109,7 +109,7 @@ export class GameUtils {
   }
 
   static validateGameAction(
-    action: 'attack' | 'defend' | 'pass' | 'take_cards' | 'throw_cards',
+    action: 'attack' | 'defend' | 'pass' | 'take_cards' | 'throw_cards' | 'use_ability' | 'reveal_card',
     playerCards: Card[],
     activeCards: CardOnTable[],
     attackingCard?: Card,
@@ -163,6 +163,14 @@ export class GameUtils {
         if (!CardUtils.canThrowCard(attackingCard, activeCards)) {
           return { valid: false, message: 'Cannot throw this card' };
         }
+        break;
+        
+      case 'use_ability':
+        // Ability validation is handled in the game service
+        break;
+        
+      case 'reveal_card':
+        // Card reveal validation is handled in the game service
         break;
     }
     

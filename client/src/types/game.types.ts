@@ -16,6 +16,22 @@ export interface CardOnTable {
 export type GameStatus = 'waiting' | 'playing' | 'finished';
 export type PlayerStatus = 'waiting' | 'active' | 'attacker' | 'defender' | 'spectator' | 'eliminated';
 export type PlayerRole = 'owner' | 'player';
+export type CharacterType = 'peaks' | 'crosses' | 'hearts' | 'diamonds';
+
+export interface CharacterInfo {
+  type: CharacterType;
+  name: string;
+  description: string;
+  image: string;
+}
+
+export interface PlayerCharacter {
+  username: string;
+  characterType: CharacterType;
+  avatar: string;
+  characterTeam?: string;
+  avatarNumber?: number;
+}
 
 export interface PlayerInRoom {
   id: string;
@@ -24,6 +40,12 @@ export interface PlayerInRoom {
   role: PlayerRole;
   cards: Card[];
   socketId?: string;
+  characterType?: string;
+  avatar?: string;
+  characterTeam?: string;
+  avatarNumber?: number;
+  visibleCards?: Card[]; // Cards visible to Peaks King
+  abilityUsed?: boolean; // Track if ability was used this round
 }
 
 export interface Room {
@@ -47,19 +69,29 @@ export interface CreateRoomRequest {
   playerLimit: number;
   playerNames: string[];
   owner: string;
+  character?: PlayerCharacter;
 }
 
 export interface JoinRoomRequest {
   roomId: string;
   playerName: string;
+  character?: {
+    username: string;
+    characterType?: string;
+    avatar?: string;
+    characterTeam?: string;
+    avatarNumber?: number;
+  };
 }
 
 export interface GameAction {
-  type: 'attack' | 'defend' | 'pass' | 'take_cards' | 'throw_cards';
+  type: 'attack' | 'defend' | 'pass' | 'take_cards' | 'throw_cards' | 'use_ability' | 'reveal_card';
   card?: Card;
   defendingCard?: Card;
   roomId: string;
   playerId: string;
+  abilityType?: 'peaks_vision' | 'crosses_throw' | 'hearts_defend';
+  targetPlayerId?: string; // For Peaks King to see specific player's card
 }
 
 export interface GameState {

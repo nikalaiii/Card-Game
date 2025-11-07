@@ -17,6 +17,7 @@ import {
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { useGame } from '../../contexts/GameContext';
+import { useCharacter } from '../../contexts/CharacterContext';
 import { CreateRoomRequest } from '../../types/game.types';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AddIcon from '@mui/icons-material/Add';
@@ -25,6 +26,7 @@ import DeleteIcon from '@mui/icons-material/Delete';
 export default function CreateRoomPage() {
   const router = useRouter();
   const { createRoom, loading, error } = useGame();
+  const { character } = useCharacter();
   const [formData, setFormData] = useState({
     name: '',
     playerLimit: 4,
@@ -81,6 +83,7 @@ export default function CreateRoomPage() {
       playerLimit: formData.playerLimit,
       playerNames: validPlayerNames,
       owner: formData.owner,
+      character: character || undefined,
     };
 
     try {

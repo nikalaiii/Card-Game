@@ -77,18 +77,20 @@ export class GameService {
       throw new NotFoundException('Player not found after dealing cards');
     }
 
-    // Validate the action
-    const validation = GameUtils.validateGameAction(
-      action.type,
-      freshPlayer.cards,
-      freshRoom.activeCards,
-      action.card,
-      action.defendingCard,
-      freshRoom.trumpSuit,
-    );
+    // Validate the action (skip validation for abilities)
+    if (action.type !== 'use_ability' && action.type !== 'reveal_card') {
+      const validation = GameUtils.validateGameAction(
+        action.type,
+        freshPlayer.cards,
+        freshRoom.activeCards,
+        action.card,
+        action.defendingCard,
+        freshRoom.trumpSuit,
+      );
 
-    if (!validation.valid) {
-      throw new BadRequestException(validation.message);
+      if (!validation.valid) {
+        throw new BadRequestException(validation.message);
+      }
     }
 
     console.log(`[GAME-SERVICE] Processing ${action.type} action for player ${freshPlayer.name}`);
@@ -115,6 +117,12 @@ export class GameService {
         break;
       case 'throw_cards':
         result = await this.handleThrowCards(freshRoom, freshPlayer, action.card!);
+        break;
+      case 'use_ability':
+        result = await this.handleUseAbility(freshRoom, freshPlayer, action);
+        break;
+      case 'reveal_card':
+        result = await this.handleRevealCard(freshRoom, freshPlayer, action);
         break;
       default:
         throw new BadRequestException('Invalid action type');
@@ -188,19 +196,31 @@ export class GameService {
       }))
     )}`);
 
+    // Deal cards to players who have fewer than 6 cards after attack
+    await this.dealCardsToPlayers(freshRoom);
+    
+    // Get fresh room data again after dealing cards
+    const updatedRoom = await this.roomModel.findByPk(room.id, {
+      include: [Player],
+    });
+    
+    if (!updatedRoom) {
+      throw new NotFoundException('Room not found after dealing cards in attack');
+    }
+
     // Check if game should end after attack
     const winner = GameUtils.checkGameEnd(
-      freshRoom.players.map((p) => ({
+      updatedRoom.players.map((p) => ({
         cards: p.cards,
         status: p.status,
         name: p.name,
       })),
     );
     if (winner) {
-      await freshRoom.update({ currentGameStatus: 'finished' });
+      await updatedRoom.update({ currentGameStatus: 'finished' });
     }
 
-    const gameState = this.getGameState(freshRoom);
+    const gameState = this.getGameState(updatedRoom);
     console.log(`[HANDLE-ATTACK] Game state after attack: ${JSON.stringify({
       currentAttacker: gameState.currentAttacker,
       currentDefender: gameState.currentDefender,
@@ -322,19 +342,31 @@ export class GameService {
       }))
     )}`);
 
+    // Deal cards to players who have fewer than 6 cards after successful defense
+    await this.dealCardsToPlayers(freshRoom);
+    
+    // Get fresh room data again after dealing cards
+    const updatedRoom = await this.roomModel.findByPk(room.id, {
+      include: [Player],
+    });
+    
+    if (!updatedRoom) {
+      throw new NotFoundException('Room not found after dealing cards in defend');
+    }
+
     // Check if game should end after defend
     const winner = GameUtils.checkGameEnd(
-      freshRoom.players.map((p) => ({
+      updatedRoom.players.map((p) => ({
         cards: p.cards,
         status: p.status,
         name: p.name,
       })),
     );
     if (winner) {
-      await freshRoom.update({ currentGameStatus: 'finished' });
+      await updatedRoom.update({ currentGameStatus: 'finished' });
     }
 
-    const gameState = this.getGameState(freshRoom);
+    const gameState = this.getGameState(updatedRoom);
     console.log(`[HANDLE-DEFEND] Game state after defend: ${JSON.stringify({
       currentAttacker: gameState.currentAttacker,
       currentDefender: gameState.currentDefender,
@@ -464,6 +496,11 @@ export class GameService {
       }
     }
 
+    // Reset abilities for new round
+    for (const player of room.players) {
+      await player.update({ abilityUsed: false });
+    }
+
     return this.getGameState(room);
   }
 
@@ -491,7 +528,19 @@ export class GameService {
 
     await room.update({ activeCards: updatedActiveCards });
 
-    return this.getGameState(room);
+    // Deal cards to players who have fewer than 6 cards after throwing cards
+    await this.dealCardsToPlayers(room);
+    
+    // Get fresh room data again after dealing cards
+    const updatedRoom = await this.roomModel.findByPk(room.id, {
+      include: [Player],
+    });
+    
+    if (!updatedRoom) {
+      throw new NotFoundException('Room not found after dealing cards in throw cards');
+    }
+
+    return this.getGameState(updatedRoom);
   }
 
   private async dealCardsToPlayers(room: Room): Promise<void> {
@@ -504,23 +553,46 @@ export class GameService {
 
     let deck = [...(freshRoom.deck || [])]; // Create a copy of the deck
     
+    console.log(`[DEAL-CARDS] Starting to deal cards. Deck size: ${deck.length}`);
+    console.log(`[DEAL-CARDS] Players before dealing: ${JSON.stringify(
+      freshRoom.players.map(p => ({ id: p.id, name: p.name, cardsCount: p.cards.length }))
+    )}`);
+    
     // Deal cards to players who have fewer than 6 cards
     for (const player of freshRoom.players) {
-      while (player.cards.length < 6 && deck.length > 0) {
+      const currentCards = [...player.cards]; // Create a copy of current cards
+      let cardsToDeal = 0;
+      
+      while (currentCards.length < 6 && deck.length > 0) {
         const card = deck.shift(); // Take first card from deck
         if (card) {
-          player.cards.push(card);
+          currentCards.push(card);
+          cardsToDeal++;
         }
       }
       
-      // Update player with new cards
-      await player.update({ cards: player.cards });
+      if (cardsToDeal > 0) {
+        console.log(`[DEAL-CARDS] Dealing ${cardsToDeal} cards to player ${player.name}`);
+        // Update player with new cards
+        await player.update({ cards: currentCards });
+      }
     }
 
     // Update room with remaining deck
     await freshRoom.update({ deck });
     
-    console.log('Dealt cards to players. Remaining deck size:', deck.length);
+    console.log(`[DEAL-CARDS] Finished dealing cards. Remaining deck size: ${deck.length}`);
+    
+    // Get fresh data to verify the dealing worked
+    const updatedRoom = await this.roomModel.findByPk(room.id, {
+      include: [Player],
+    });
+    
+    if (updatedRoom) {
+      console.log(`[DEAL-CARDS] Players after dealing: ${JSON.stringify(
+        updatedRoom.players.map(p => ({ id: p.id, name: p.name, cardsCount: p.cards.length }))
+      )}`);
+    }
   }
 
   private getGameState(room: Room): GameState {
@@ -547,6 +619,12 @@ export class GameService {
         status: player.status,
         cards: player.cards || [],
         cardsCount: (player.cards || []).length,
+        characterType: player.characterType,
+        avatar: player.avatar,
+        characterTeam: player.characterTeam,
+        avatarNumber: player.avatarNumber,
+        visibleCards: player.visibleCards || [],
+        abilityUsed: player.abilityUsed || false,
       })),
     };
 
@@ -615,5 +693,175 @@ export class GameService {
     });
 
     return this.getGameState(room);
+  }
+
+  private async handleUseAbility(
+    room: Room,
+    player: Player,
+    action: GameAction,
+  ): Promise<GameState> {
+    console.log(`[HANDLE-USE-ABILITY] Player ${player.name} using ability: ${action.abilityType}`);
+    
+    if (!action.abilityType) {
+      throw new BadRequestException('Ability type is required');
+    }
+
+    // Check if player has already used their ability this round
+    if (player.abilityUsed) {
+      throw new BadRequestException('Ability already used this round');
+    }
+
+    switch (action.abilityType) {
+      case 'peaks_vision':
+        return await this.handlePeaksVision(room, player);
+      case 'crosses_throw':
+        return await this.handleCrossesThrow(room, player, action.card!);
+      case 'hearts_defend':
+        return await this.handleHeartsDefend(room, player, action.card!, action.defendingCard!);
+      default:
+        throw new BadRequestException('Invalid ability type');
+    }
+  }
+
+  private async handleRevealCard(
+    room: Room,
+    player: Player,
+    action: GameAction,
+  ): Promise<GameState> {
+    console.log(`[HANDLE-REVEAL-CARD] Player ${player.name} revealing card to ${action.targetPlayerId}`);
+    
+    if (!action.targetPlayerId || !action.card) {
+      throw new BadRequestException('Target player and card are required');
+    }
+
+    const targetPlayer = room.players.find(p => p.id === action.targetPlayerId);
+    if (!targetPlayer) {
+      throw new BadRequestException('Target player not found');
+    }
+
+    // Add card to target player's visible cards
+    const updatedVisibleCards = [...(targetPlayer.visibleCards || []), action.card];
+    await targetPlayer.update({ visibleCards: updatedVisibleCards });
+
+    return this.getGameState(room);
+  }
+
+  private async handlePeaksVision(room: Room, player: Player): Promise<GameState> {
+    console.log(`[HANDLE-PEAKS-VISION] Player ${player.name} using Peaks Vision`);
+    
+    if (player.characterType !== 'peaks') {
+      throw new BadRequestException('Only Peaks King can use this ability');
+    }
+
+    // Reveal one random card from each opponent
+    for (const opponent of room.players) {
+      if (opponent.id !== player.id && opponent.cards.length > 0) {
+        const randomIndex = Math.floor(Math.random() * opponent.cards.length);
+        const revealedCard = opponent.cards[randomIndex];
+        
+        // Add to opponent's visible cards so they show above the opponent
+        const updatedVisibleCards = [...(opponent.visibleCards || []), revealedCard];
+        await opponent.update({ visibleCards: updatedVisibleCards });
+      }
+    }
+
+    // Mark ability as used
+    await player.update({ abilityUsed: true });
+
+    return this.getGameState(room);
+  }
+
+  private async handleCrossesThrow(
+    room: Room,
+    player: Player,
+    card: any,
+  ): Promise<GameState> {
+    console.log(`[HANDLE-CROSSES-THROW] Player ${player.name} using Crosses Throw with ${card.shortName}`);
+    
+    if (player.characterType !== 'crosses') {
+      throw new BadRequestException('Only Crosses King can use this ability');
+    }
+
+    // Remove card from player's hand
+    const updatedCards = player.cards.filter(
+      (c) => c.shortName !== card.shortName,
+    );
+    await player.update({ cards: updatedCards });
+
+    // Add card to active cards as attacking card (unconnected)
+    const newActiveCard = { attackingCard: card, defendingCard: null };
+    const updatedActiveCards = [...room.activeCards, newActiveCard];
+    await room.update({ activeCards: updatedActiveCards });
+
+    // Mark ability as used
+    await player.update({ abilityUsed: true });
+
+    // Deal cards to players
+    await this.dealCardsToPlayers(room);
+    
+    const updatedRoom = await this.roomModel.findByPk(room.id, {
+      include: [Player],
+    });
+    
+    if (!updatedRoom) {
+      throw new NotFoundException('Room not found after dealing cards in crosses throw');
+    }
+
+    return this.getGameState(updatedRoom);
+  }
+
+  private async handleHeartsDefend(
+    room: Room,
+    player: Player,
+    attackingCard: any,
+    defendingCard: any,
+  ): Promise<GameState> {
+    console.log(`[HANDLE-HEARTS-DEFEND] Player ${player.name} using Hearts Defend`);
+    
+    if (player.characterType !== 'hearts') {
+      throw new BadRequestException('Only Hearts King can use this ability');
+    }
+
+    if (player.id !== room.currentDefender) {
+      throw new BadRequestException('Not your turn to defend');
+    }
+
+    // Find the attacking card in active cards
+    const cardPairIndex = room.activeCards.findIndex(
+      (pair) =>
+        pair.attackingCard.shortName === attackingCard.shortName &&
+        !pair.defendingCard,
+    );
+
+    if (cardPairIndex === -1) {
+      throw new BadRequestException('Attacking card not found or already defended');
+    }
+
+    // Remove defending card from player's hand
+    const updatedCards = player.cards.filter(
+      (c) => c.shortName !== defendingCard.shortName,
+    );
+    await player.update({ cards: updatedCards });
+
+    // Update the card pair with defending card
+    const updatedActiveCards = [...room.activeCards];
+    updatedActiveCards[cardPairIndex].defendingCard = defendingCard;
+    await room.update({ activeCards: updatedActiveCards });
+
+    // Mark ability as used
+    await player.update({ abilityUsed: true });
+
+    // Deal cards to players
+    await this.dealCardsToPlayers(room);
+    
+    const updatedRoom = await this.roomModel.findByPk(room.id, {
+      include: [Player],
+    });
+    
+    if (!updatedRoom) {
+      throw new NotFoundException('Room not found after dealing cards in hearts defend');
+    }
+
+    return this.getGameState(updatedRoom);
   }
 }

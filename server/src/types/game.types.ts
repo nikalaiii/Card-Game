@@ -6,24 +6,48 @@ import {
   PlayerRole,
 } from './card.types';
 
+export interface PlayerCharacter {
+  username: string;
+  characterType?: string;
+  avatar?: string;
+  characterTeam?: string;
+  avatarNumber?: number;
+}
+
 export interface CreateRoomRequest {
   name: string;
   playerLimit: number;
   playerNames: string[];
   owner: string;
+  character?: {
+    username: string;
+    characterType?: string;
+    avatar?: string;
+    characterTeam?: string;
+    avatarNumber?: number;
+  };
 }
 
 export interface JoinRoomRequest {
   roomId: string;
   playerName: string;
+  character?: {
+    username: string;
+    characterType?: string;
+    avatar?: string;
+    characterTeam?: string;
+    avatarNumber?: number;
+  };
 }
 
 export interface GameAction {
-  type: 'attack' | 'defend' | 'pass' | 'take_cards' | 'throw_cards';
+  type: 'attack' | 'defend' | 'pass' | 'take_cards' | 'throw_cards' | 'use_ability' | 'reveal_card';
   card?: Card;
   defendingCard?: Card;
   roomId: string;
   playerId: string;
+  abilityType?: 'peaks_vision' | 'crosses_throw' | 'hearts_defend';
+  targetPlayerId?: string; // For Peaks King to see specific player's card
 }
 
 export interface GameState {
@@ -85,4 +109,8 @@ export interface PlayerInRoom {
   role: PlayerRole;
   cards: Card[];
   socketId?: string;
+  characterType?: string;
+  avatar?: string;
+  characterTeam?: string;
+  avatarNumber?: number;
 }

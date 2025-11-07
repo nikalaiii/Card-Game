@@ -21,6 +21,7 @@ import { motion } from 'framer-motion';
 import { useGame } from '../../contexts/GameContext';
 import { ApiService } from '../../services/api.service';
 import { Room } from '../../types/game.types';
+import { useCharacter } from '../../contexts/CharacterContext';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
 import GroupIcon from '@mui/icons-material/Group';
@@ -28,6 +29,7 @@ import GroupIcon from '@mui/icons-material/Group';
 export default function JoinRoomPage() {
   const router = useRouter();
   const { joinRoom, loading, error } = useGame();
+  const { character } = useCharacter();
   const [playerName, setPlayerName] = useState('');
   const [roomId, setRoomId] = useState('');
   const [availableRooms, setAvailableRooms] = useState<Room[]>([]);
@@ -36,6 +38,10 @@ export default function JoinRoomPage() {
 
   useEffect(() => {
     loadAvailableRooms();
+    // Prefill player name from created character
+    if (character?.username) {
+      setPlayerName(character.username);
+    }
   }, []);
 
   const loadAvailableRooms = async () => {
@@ -64,6 +70,15 @@ export default function JoinRoomPage() {
       await joinRoom({
         roomId: roomId.trim(),
         playerName: playerName.trim(),
+        character: character
+          ? {
+              username: character.username,
+              characterType: character.characterType,
+              avatar: character.avatar,
+              characterTeam: character.characterTeam,
+              avatarNumber: character.avatarNumber,
+            }
+          : undefined,
       });
       router.push(`/room/${roomId.trim()}?name=${encodeURIComponent(playerName.trim())}`);
     } catch (err) {
@@ -80,6 +95,15 @@ export default function JoinRoomPage() {
       await joinRoom({
         roomId: room.id,
         playerName: playerName.trim(),
+        character: character
+          ? {
+              username: character.username,
+              characterType: character.characterType,
+              avatar: character.avatar,
+              characterTeam: character.characterTeam,
+              avatarNumber: character.avatarNumber,
+            }
+          : undefined,
       });
       router.push(`/room/${room.id}?name=${encodeURIComponent(playerName.trim())}`);
     } catch (err) {
@@ -144,6 +168,7 @@ export default function JoinRoomPage() {
                       onChange={(e) => setPlayerName(e.target.value)}
                       required
                       variant="outlined"
+                      helperText={character?.username ? 'Prefilled from Create Character' : undefined}
                     />
                   </Grid>
                   <Grid item xs={12}>

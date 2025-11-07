@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { GameProvider } from "../contexts/GameContext";
+import { CharacterProvider } from "../contexts/CharacterContext";
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { theme } from './theme';
 import { Navigation } from '../components/Navigation';
+import { Kalnia_Glaze } from 'next/font/google';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -16,6 +18,8 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+const kalnia = Kalnia_Glaze({ weight: ['400','700'], subsets: ['latin'], display: 'swap' });
 
 export const metadata: Metadata = {
   title: "Card Game",
@@ -28,14 +32,16 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={kalnia.className}>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <ThemeProvider theme={theme}>
           <CssBaseline />
-          <GameProvider>
-            <Navigation />
-            {children}
-          </GameProvider>
+          <CharacterProvider>
+            <GameProvider>
+              <Navigation />
+              {children}
+            </GameProvider>
+          </CharacterProvider>
         </ThemeProvider>
       </body>
     </html>

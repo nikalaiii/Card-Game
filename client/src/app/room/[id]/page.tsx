@@ -10,7 +10,6 @@ import {
   Paper,
   Alert,
   CircularProgress,
-  Grid,
   Card,
   CardContent,
   Chip,
@@ -22,11 +21,10 @@ import {
 } from "@mui/material";
 import { motion, AnimatePresence } from "framer-motion";
 import { useGame } from "../../../contexts/GameContext";
+import { useCharacter } from "../../../contexts/CharacterContext";
 import { ApiService } from "../../../services/api.service";
 import {
-  Room,
   Card as GameCard,
-  CardOnTable,
   PlayerInRoom,
 } from "../../../types/game.types";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -34,11 +32,13 @@ import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import ExitToAppIcon from "@mui/icons-material/ExitToApp";
 import { CardComponent } from "../../../components/CardComponent";
 import { GameTable } from "../../../components/GameTable";
+import Image from "next/image";
 
 export default function GameRoomPage() {
   const router = useRouter();
   const params = useParams();
   const roomId = params.id as string;
+  const { character } = useCharacter();
 
   const {
     currentRoom,
@@ -312,13 +312,61 @@ export default function GameRoomPage() {
       });
       
       const actionPayload = {
-        type: "defend",
+        type: "defend" as const,
         card: attackingCard, // IMPORTANT: first the ATTACKING card from the table
         defendingCard: defendingCard, // Then the card with the hands
       };
       
       console.log('[DEFEND] Full action payload:', JSON.stringify(actionPayload, null, 2));
       
+      gameAction(actionPayload);
+      setSelectedCard(null);
+    }
+  };
+
+  const handleUseAbility = (abilityType: 'peaks_vision' | 'crosses_throw' | 'hearts_defend') => {
+    if (!effectiveCurrentPlayer || !gameState) return;
+
+    console.log(`[USE-ABILITY] Using ${abilityType} ability`);
+    
+    if (abilityType === 'peaks_vision') {
+      // Peaks vision doesn't need a card selection
+      const actionPayload = {
+        type: "use_ability" as const,
+        abilityType: abilityType,
+      };
+      gameAction(actionPayload);
+    } else if (abilityType === 'crosses_throw') {
+      // For crosses throw, we need to show card selection
+      if (!selectedCard) {
+        alert('Please select a card to throw with your ability');
+        return;
+      }
+      const actionPayload = {
+        type: "use_ability" as const,
+        abilityType: abilityType,
+        card: selectedCard,
+      };
+      gameAction(actionPayload);
+      setSelectedCard(null);
+    } else if (abilityType === 'hearts_defend') {
+      // For hearts defend, we need to show card selection
+      if (!selectedCard) {
+        alert('Please select a card to defend with your ability');
+        return;
+      }
+      // Find the attacking card to defend against
+      const attackingCard = gameState.activeCards.find(pair => !pair.defendingCard)?.attackingCard;
+      if (!attackingCard) {
+        alert('No attacking card to defend against');
+        return;
+      }
+      const actionPayload = {
+        type: "use_ability" as const,
+        abilityType: abilityType,
+        card: attackingCard,
+        defendingCard: selectedCard,
+      };
       gameAction(actionPayload);
       setSelectedCard(null);
     }
@@ -379,8 +427,23 @@ export default function GameRoomPage() {
     );
   }
 
+  // Layout helpers for seating around edges
+  const arrangedPlayers = room.players || [];
+  const getSeatPosition = (index: number, total: number) => {
+    if (total === 2) return index === 0 ? 'bottom' : 'top';
+    const positions = ['bottom', 'right', 'top', 'left', 'top-right'];
+    return positions[index % positions.length];
+  };
+
+  const borderForRole = (playerId: string) => {
+    if (!gameState) return undefined;
+    if (gameState.currentAttacker === playerId) return '3px solid #e53935';
+    if (gameState.currentDefender === playerId) return '3px solid #43a047';
+    return undefined;
+  };
+
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Container maxWidth="lg" sx={{ py: 2 }}>
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -410,9 +473,21 @@ export default function GameRoomPage() {
             </Button>
           </Box>
 
-          <Typography variant="h3" component="h1" gutterBottom>
-            {room.name}
-          </Typography>
+          <Box display="flex" alignItems="center" justifyContent="space-between">
+            <Typography variant="h4" component="h1" gutterBottom>
+              {room.name}
+            </Typography>
+            {/* Kinmate info top-left equivalent (placed near header) */}
+            {character && (
+              <Box display="flex" alignItems="center" gap={2} sx={{ border: '1px solid', borderColor: 'divider', borderRadius: 2, px: 2, py: 1 }}>
+                <Typography variant="h6">{character.avatar}</Typography>
+                <Box>
+                  <Typography variant="body1" fontWeight={600}>{character.username}</Typography>
+                  <Typography variant="body2" color="text.secondary">{character.characterType}</Typography>
+                </Box>
+              </Box>
+            )}
+          </Box>
 
           <Box display="flex" gap={2} alignItems="center" mb={2}>
             <Chip
@@ -447,135 +522,305 @@ export default function GameRoomPage() {
             <Typography variant="h6" gutterBottom>
               Game Status
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Current Attacker:{" "}
-                  {gameState.players.find(
-                    (p) => p.id === gameState.currentAttacker
-                  )?.name || "Unknown"}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Current Defender:{" "}
-                  {gameState.players.find(
-                    (p) => p.id === gameState.currentDefender
-                  )?.name || "Unknown"}
-                </Typography>
-              </Grid>
-            </Grid>
+            <Box display="flex" flexWrap="wrap" gap={3}>
+              <Typography variant="body2" color="text.secondary">
+                Current Attacker: {gameState.players.find((p) => p.id === gameState.currentAttacker)?.name || 'Unknown'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Current Defender: {gameState.players.find((p) => p.id === gameState.currentDefender)?.name || 'Unknown'}
+              </Typography>
+            </Box>
           </Paper>
         )}
 
-        {/* Players List */}
-        <Paper sx={{ p: 3, mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            Players
-          </Typography>
-          <Grid container spacing={2}>
-            {room.players?.map((player, index) => (
-              <Grid item xs={12} sm={6} md={4} key={player.id}>
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.5, delay: index * 0.1 }}
-                >
-                  <Card
-                    sx={{
-                      border:
-                        player.id === effectiveCurrentPlayer?.id
-                          ? "2px solid"
-                          : "none",
-                      borderColor: "primary.main",
-                      bgcolor: isPlayerTurn(player.id)
-                        ? "action.hover"
-                        : "background.paper",
-                    }}
-                  >
-                    <CardContent>
-                      <Box
-                        display="flex"
-                        justifyContent="space-between"
-                        alignItems="center"
-                        mb={1}
-                      >
-                        <Typography variant="h6">
-                          {player.name}
-                          {player.id === effectiveCurrentPlayer?.id && " (You)"}
-                        </Typography>
-                        <Chip
-                          label={getPlayerStatus(player)}
-                          color={getPlayerStatusColor(getPlayerStatus(player)) as any}
-                          size="small"
-                        />
-                      </Box>
-                      <Typography variant="body2" color="text.secondary">
-                        Cards: {player.cards?.length || 0}
-                        {player.role === "owner" && " • Owner"}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </Grid>
-            ))}
-          </Grid>
-        </Paper>
+        {/* Main game area with left sidebar */}
+        <Box sx={{ display: 'flex', gap: 3, mb: 3 }}>
+          {/* Left sidebar for game actions */}
+          <Box sx={{ width: 300, flexShrink: 0 }}>
+            {/* Game Actions */}
+            {room.currentGameStatus === "waiting" &&
+              effectiveCurrentPlayer?.role === "owner" && (
+                <Paper sx={{ p: 3, mb: 3 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Game Controls
+                  </Typography>
+                  {(() => {
+                    // Check for players that are either 'active' or 'waiting' (connected players)
+                    const connectedPlayers = room.players?.filter(p => 
+                      (p.status as string) === 'active' || (p.status as string) === 'waiting'
+                    ).length || 0;
+                    const totalPlayers = room.players?.length || 0;
+                    const canStart = connectedPlayers === totalPlayers && totalPlayers >= 2;
+                    
+                    return (
+                      <>
+                        <Button
+                          fullWidth
+                          variant="contained"
+                          size="large"
+                          startIcon={<PlayArrowIcon />}
+                          onClick={handleStartGame}
+                          disabled={loading || !canStart}
+                          sx={{ mb: 2 }}
+                        >
+                          Start Game
+                        </Button>
+                        {!canStart && (
+                          <Typography variant="body2" color="text.secondary">
+                            {connectedPlayers < totalPlayers 
+                              ? `Waiting for ${totalPlayers - connectedPlayers} player(s) to connect...`
+                              : 'Need at least 2 players to start'
+                            }
+                          </Typography>
+                        )}
+                      </>
+                    );
+                  })()}
+                </Paper>
+              )}
 
-        {/* Game Actions */}
-        {room.currentGameStatus === "waiting" &&
-          effectiveCurrentPlayer?.role === "owner" && (
-            <Box mb={4} textAlign="center">
-              {(() => {
-                const activePlayers = room.players?.filter(p => (p.status as string) === 'active').length || 0;
-                const totalPlayers = room.players?.length || 0;
-                const canStart = activePlayers === totalPlayers && totalPlayers >= 2;
-                
-                return (
-                  <>
+            {/* Game Action Buttons */}
+            {gameState && (gameState.status === 'playing' || gameState.status === 'waiting') && (
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Your Actions
+                </Typography>
+                {(() => {
+                  console.log('Game Action Debug:', {
+                    gameState: gameState.status,
+                    currentAttacker: gameState.currentAttacker,
+                    currentDefender: gameState.currentDefender,
+                    currentPlayerId: effectiveCurrentPlayer?.id,
+                    isAttacker: gameState.currentAttacker === effectiveCurrentPlayer?.id,
+                    isDefender: gameState.currentDefender === effectiveCurrentPlayer?.id
+                  });
+                  return null;
+                })()}
+                <Box display="flex" flexDirection="column" gap={2}>
+                  {gameState.currentAttacker === effectiveCurrentPlayer?.id && (
                     <Button
                       variant="contained"
+                      color="primary"
                       size="large"
-                      startIcon={<PlayArrowIcon />}
-                      onClick={handleStartGame}
-                      disabled={loading || !canStart}
+                      onClick={handlePass}
+                      disabled={loading}
+                      sx={{ py: 1.5 }}
                     >
-                      Start Game
+                      Pass
                     </Button>
-                    {!canStart && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        {activePlayers < totalPlayers 
-                          ? `Waiting for ${totalPlayers - activePlayers} player(s) to connect...`
-                          : 'Need at least 2 players to start'
-                        }
-                      </Typography>
-                    )}
-                  </>
-                );
-              })()}
-            </Box>
-          )}
+                  )}
+                  {gameState.currentDefender === effectiveCurrentPlayer?.id && (
+                    <Button
+                      variant="contained"
+                      color="warning"
+                      size="large"
+                      onClick={handleTakeCards}
+                      disabled={loading}
+                      sx={{ py: 1.5 }}
+                    >
+                      Take Cards
+                    </Button>
+                  )}
+                  {gameState.currentAttacker !== effectiveCurrentPlayer?.id && 
+                   gameState.currentDefender !== effectiveCurrentPlayer?.id && (
+                    <Typography variant="body2" color="text.secondary" textAlign="center">
+                      Wait for your turn
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            )}
 
-        {/* Game Table */}
-        {gameState && gameState.status === "playing" && (
-          <>
-            <GameTable
-              gameState={gameState}
-              currentPlayer={effectiveCurrentPlayer}
-              onCardClick={handleCardClick}
-              onPass={handlePass}
-              onTakeCards={handleTakeCards}
-              selectedCard={selectedCard}
-              onDefendAgainst={handleDefendAgainst}
-            />
+            {/* Character Abilities */}
+            {gameState && gameState.status === 'playing' && effectiveCurrentPlayer && (
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  Character Abilities
+                </Typography>
+                <Box display="flex" flexDirection="column" gap={2}>
+                  {effectiveCurrentPlayer.characterType === 'peaks' && !effectiveCurrentPlayer.abilityUsed && (
+                    <Button
+                      variant="outlined"
+                      color="info"
+                      size="large"
+                      onClick={() => handleUseAbility('peaks_vision')}
+                      disabled={loading}
+                      sx={{ py: 1.5 }}
+                    >
+                      Peaks Vision (See opponent cards)
+                    </Button>
+                  )}
+                  {effectiveCurrentPlayer.characterType === 'crosses' && 
+                   !effectiveCurrentPlayer.abilityUsed && 
+                   gameState.currentAttacker === effectiveCurrentPlayer.id && (
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      size="large"
+                      onClick={() => handleUseAbility('crosses_throw')}
+                      disabled={loading}
+                      sx={{ py: 1.5 }}
+                    >
+                      Crosses Throw (Select card first)
+                    </Button>
+                  )}
+                  {effectiveCurrentPlayer.characterType === 'hearts' && 
+                   !effectiveCurrentPlayer.abilityUsed && 
+                   gameState.currentDefender === effectiveCurrentPlayer.id && (
+                    <Button
+                      variant="outlined"
+                      color="error"
+                      size="large"
+                      onClick={() => handleUseAbility('hearts_defend')}
+                      disabled={loading}
+                      sx={{ py: 1.5 }}
+                    >
+                      Hearts Defend (Select card first)
+                    </Button>
+                  )}
+                  {effectiveCurrentPlayer.abilityUsed && (
+                    <Typography variant="body2" color="text.secondary" textAlign="center">
+                      Ability used this round
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            )}
+          </Box>
 
-            {/* Deck Information */}
-            <Box mt={2} textAlign="center">
-              <Typography variant="body2" color="text.secondary">
-                Cards remaining in deck: {gameState.deck.length}
-              </Typography>
+          {/* Main game area */}
+          <Box sx={{ flex: 1, position: 'relative', height: 520 }}>
+            {/* Center green table */}
+            <Box
+              sx={{
+                position: 'absolute',
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)',
+                width: '70%',
+                height: 260,
+                background: '#2e7d32',
+                borderRadius: 6,
+                border: '4px solid #000',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                p: 2,
+              }}
+            >
+              {gameState && (
+                <GameTable
+                  gameState={gameState}
+                  currentPlayer={effectiveCurrentPlayer}
+                  onCardClick={handleCardClick}
+                  onPass={handlePass}
+                  onTakeCards={handleTakeCards}
+                  selectedCard={selectedCard}
+                  onDefendAgainst={handleDefendAgainst}
+                />
+              )}
             </Box>
-          </>
+
+          {arrangedPlayers.map((player, index) => {
+            const seat = getSeatPosition(index, arrangedPlayers.length);
+            const baseStyle: any = { position: 'absolute', display: 'flex', alignItems: 'center', gap: 1 };
+            if (seat === 'top') Object.assign(baseStyle, { top: 0, left: '50%', transform: 'translateX(-50%)' });
+            if (seat === 'bottom') Object.assign(baseStyle, { bottom: 0, left: '50%', transform: 'translateX(-50%)' });
+            if (seat === 'left') Object.assign(baseStyle, { left: 0, top: '50%', transform: 'translateY(-50%)' });
+            if (seat === 'right') Object.assign(baseStyle, { right: 0, top: '50%', transform: 'translateY(-50%)' });
+            if (seat === 'top-right') Object.assign(baseStyle, { top: 0, right: 0, transform: 'translateY(0)' });
+
+            const seatCardBg = player.id === effectiveCurrentPlayer?.id ? 'action.hover' : 'background.paper';
+            return (
+              <Box key={player.id} sx={baseStyle}>
+                {/* Visible cards for Peaks King */}
+                {player.visibleCards && player.visibleCards.length > 0 && (
+                  <Box sx={{ 
+                    position: 'absolute', 
+                    top: seat === 'top' ? -60 : seat === 'bottom' ? -60 : seat === 'left' ? -30 : -30,
+                    left: seat === 'left' ? -80 : seat === 'right' ? -80 : '50%',
+                    transform: seat === 'left' || seat === 'right' ? 'translateY(-50%)' : 'translateX(-50%)',
+                    display: 'flex',
+                    gap: 1,
+                    zIndex: 10
+                  }}>
+                    {player.visibleCards.map((card: any, cardIndex: number) => (
+                      <Card key={cardIndex} sx={{ 
+                        width: 40, 
+                        height: 56, 
+                        border: '2px solid #ff6b6b',
+                        borderRadius: 1,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 10,
+                        fontWeight: 'bold',
+                        bgcolor: '#fff',
+                        boxShadow: 2
+                      }}>
+                        {card.shortName}
+                      </Card>
+                    ))}
+                  </Box>
+                )}
+                
+                <Card sx={{ minWidth: 220, border: borderForRole(player.id), borderRadius: 3, bgcolor: seatCardBg }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" gap={2}>
+                      <Box sx={{
+                        width: 48,
+                        height: 48,
+                        borderRadius: '50%',
+                        border: '2px solid',
+                        borderColor: 'divider',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        fontSize: 24,
+                        backgroundColor: '#fff',
+                        overflow: 'hidden',
+                      }}>
+                        {(() => {
+                          console.log(`Player ${player.name} avatar:`, player.avatar);
+                          if (player.avatar && player.avatar.startsWith('/')) {
+                            return <Image src={player.avatar} alt={player.name} width={48} height={48} />;
+                          } else {
+                            return player.avatar || '👤';
+                          }
+                        })()}
+                      </Box>
+                      <Box sx={{ minWidth: 120 }}>
+                        <Box display="flex" alignItems="center" gap={1}>
+                          <Typography variant="subtitle1" fontWeight={600}>{player.name}</Typography>
+                          {player.id === effectiveCurrentPlayer?.id && (
+                            <Chip label="You" size="small" />
+                          )}
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">
+                          {player.characterType || '—'} • {player.role}
+                        </Typography>
+                        <Box mt={0.5}>
+                          <Chip size="small" label={getPlayerStatus(player)} color={getPlayerStatusColor(getPlayerStatus(player)) as any} />
+                        </Box>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Box>
+            );
+          })}
+          </Box>
+        </Box>
+
+
+        {/* Deck Information */}
+        {gameState && (
+          <Box mt={1} textAlign="center">
+            <Typography variant="body2" color="text.secondary">
+              Cards remaining in deck: {gameState.deck.length}
+            </Typography>
+          </Box>
         )}
 
         {/* Player's Cards */}
@@ -638,6 +883,15 @@ export default function GameRoomPage() {
             </Typography>
             <Typography variant="body2" sx={{ mt: 1 }}>
               <strong>Room Players Count:</strong> {room?.players?.length || 0}
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>Game Status:</strong> {gameState?.status || 'No game state'}
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>Current Attacker:</strong> {gameState?.currentAttacker || 'None'}
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>Current Defender:</strong> {gameState?.currentDefender || 'None'}
             </Typography>
           </Paper>
         )}
